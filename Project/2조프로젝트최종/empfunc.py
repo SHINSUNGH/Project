@@ -2,7 +2,7 @@ import sqlite3,os
 
 path = os.path.dirname(__file__)
 
-# 직원테이블
+# 직원정보테이블
 def create_table():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
@@ -17,8 +17,8 @@ def create_table():
     conn.commit()
     conn.close()
 
-# 이름,시간,주간야간테이블
-def create_table2():
+# 이름,시간,주간야간,근무시간입력한현재날짜 테이블
+def create_jobtime():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
     cur.execute('''
@@ -30,14 +30,15 @@ def create_table2():
     work text,
     empid integer,
     date timestamp default current_timestamp,
-    foreign key (empid) references employee(empid) on delete cascade  
+    foreign key (empid) references employee(empid) on delete cascade 
     )
     ''') # on delete cascade 를 넣어 employee테이블데이터가삭제되면 같은empid를가진 jobtime데이터도삭제된다.
+        # jobtime테이블에 데이터를 입력하면 데이터를 입력한 현재날짜와시간을 표시해준다.
     conn.commit()
     conn.close()
 
 # 직무,시급테이블
-def create_table3():
+def create_wage():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
     cur.execute('''
@@ -63,11 +64,21 @@ def insert_emp():
     conn.commit()
     conn.close()
 
+# 직원이름, 직무, 주간/야간정보
+def workinfo():
+    conn = sqlite3.connect(path + '/empinfo.db')
+    cur = conn.cursor()
+    sql = 'select employee.name,jobtime.work,jobtime.shift from employee inner join jobtime on employee.empid = jobtime.empid group by employee.name'
+    cur.execute(sql)
+    result = cur.fetchall()
+    print(result)
+    conn.close()
+
 # 알바시간입력
 def insert_jobtime():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
-    name_emp()
+    workinfo()
     sql = 'insert into jobtime(name,time,shift,work) values(?,?,?,?)'
     name = input('이름 ')
     time = input('시간 ')
@@ -89,17 +100,27 @@ def insert_wage():
     conn.commit()
     conn.close()
 
-# 직원정보
+# 직원정보출력
 def all_emp():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
-    sql = 'select * from employee'
+    sql = 'select name from employee'
     cur.execute(sql)
     result = cur.fetchall()
     print(result)
     conn.close()
 
-# 직원이름테이블
+# 명세서 출력전 이름과 총근무시간을 출력하여 급여명세서가 필요한사람의 이름을 입력하여 급여명세서출력
+def all_time():
+    conn = sqlite3.connect(path + '/empinfo.db')
+    cur = conn.cursor()
+    sql = 'select employee.name,sum(time) from employee inner join jobtime on employee.empid = jobtime.empid group by employee.name'
+    cur.execute(sql)
+    result = cur.fetchall()
+    print(result)
+    conn.close()
+
+# 직원이름만 출력 테이블
 def name_emp():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
@@ -113,8 +134,9 @@ def name_emp():
 def part_emp():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
-    sql = 'select * from employee where name = ?'
+    all_emp()
     name = input('검색할 직원이름 ')
+    sql = 'select * from employee where name = ?'
     cur.execute(sql, (name,))
     result = cur.fetchone()
     if result:
@@ -123,7 +145,7 @@ def part_emp():
         print("해당하는 직원이 존재하지 않습니다.")
     conn.close()
 
-# 입력한근무시간을 리스트로 출력
+# 입력한 근무시간을 입력해 출력할때 일끝난후 언제몇시에 입력했는지 리스트로 출력
 def all_jobtime():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
@@ -141,7 +163,7 @@ def update_emp():
     name = input('수정할 직원 ')
     check = 1
     while check:
-        col = input('수정할 정보(gender,tel,age)')
+        col = input('수정할 정보(gender,tel,age) ')
         if col in ('gender','tel','age'):
             check = 0
     value = input(f'{col}수정할 내용 입력 ')
@@ -161,32 +183,17 @@ def delete_emp():
     conn.commit()
     conn.close()
 
-# 이름검색해서 총근무시간출력
-def sum_time():
-    conn = sqlite3.connect(path + '/empinfo.db')
-    cur = conn.cursor()
-    name_emp()
-    sql = 'select sum(time) from jobtime where name = ?'
-    name = input('검색할 직원이름 ')
-    cur.execute(sql, (name,))
-    result = cur.fetchone()
-    if result:
-        print('총 근무시간 ',result)
-    else:
-        print("해당하는 직원이 존재하지 않습니다.")
-    conn.close()
-
-# 주휴수당계산 innerjoi where group by를 사용해서 테이블3개의 데이터를 한테이블에 출력
+# 주휴수당계산 innerjoi where group by를 사용해서 테이블3개의 데이터계산한걸 한테이블에 출력, 이름을잘못입력하면 데이터없다고 표시
 def cal():
     conn = sqlite3.connect(path + '/empinfo.db')
     cur = conn.cursor()
-    name = input('이름입력')
+    all_time()
+    name = input('이름 ')
     cur.execute(f"select count(*) from employee where name = '{name}'")
     count = cur.fetchone()[0]
     if count == 0:
         print(f"입력한 이름 '{name}'에 해당하는 데이터가 없습니다.")
         return
-    
     sql = f'''select employee.name,
                 case when sum(jobtime.time) 
                 then (sum(jobtime.time)*wage.wage) end as total_pay,
@@ -208,7 +215,7 @@ def cal():
 # select case then 을 사용하여 급여를 total_pay컬럼에 일한시간*급여를 계산해 넣어주고, 
 # 일한시간이 15시간 이상이면 주휴수당을 주는데 총일한시간/5 * 급여를 곱하여 계산해준다.
 
-# 급여명세서 
+# 급여명세서 이름 급여일자 총급여 주휴수당 합계를 영수증으로 출력
 from datetime import datetime
 def print_receipt(name, total_pay, holiday_pay):
     print("===========================================")
@@ -229,6 +236,7 @@ def print_receipt(name, total_pay, holiday_pay):
     total = (total_pay) + int(holiday_pay)
     print(f"총 합계           {total}원")
     print("===========================================")
+
 '''
 현재 서빙,캐셔는 최저시급, 주방은 최저시급의 1.2배를 지급하고 있습니다.
 그리고 야간근무는 주간근무의 1.5배의 시급을 지급합니다.
